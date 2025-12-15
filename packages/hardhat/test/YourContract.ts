@@ -1,28 +1,65 @@
-import { expect } from "chai";
-import { ethers } from "hardhat";
-import { YourContract } from "../typechain-types";
+// import { expect } from "chai";
+// import { ethers } from "hardhat";
+// import { YourContract } from "../typechain-types";
 
-describe("YourContract", function () {
-  // We define a fixture to reuse the same setup in every test.
+// describe("YourContract - Digital Content", function () {
+//   let contract: YourContract;
+//   let owner: any;
+//   let user: any;
 
-  let yourContract: YourContract;
-  before(async () => {
-    const [owner] = await ethers.getSigners();
-    const yourContractFactory = await ethers.getContractFactory("YourContract");
-    yourContract = (await yourContractFactory.deploy(owner.address)) as YourContract;
-    await yourContract.waitForDeployment();
-  });
+//   beforeEach(async () => {
+//     [owner, user] = await ethers.getSigners();
+//     const Factory = await ethers.getContractFactory("YourContract");
+//     contract = (await Factory.deploy(owner.address)) as YourContract;
+//     await contract.waitForDeployment();
+//   });
 
-  describe("Deployment", function () {
-    it("Should have the right message on deploy", async function () {
-      expect(await yourContract.greeting()).to.equal("Building Unstoppable Apps!!!");
-    });
+//   it("Owner can create content", async () => {
+//     await contract.createContent(
+//       ethers.parseEther("0.05"),
+//       "ipfs://content1"
+//     );
 
-    it("Should allow setting a new message", async function () {
-      const newGreeting = "Learn Scaffold-ETH 2! :)";
+//     const content = await contract.contents(0);
+//     expect(content.exists).to.equal(true);
+//   });
 
-      await yourContract.setGreeting(newGreeting);
-      expect(await yourContract.greeting()).to.equal(newGreeting);
-    });
-  });
-});
+//   it("User can buy content", async () => {
+//     await contract.createContent(
+//       ethers.parseEther("0.05"),
+//       "ipfs://content1"
+//     );
+
+//     await contract.connect(user).buyContent(0, {
+//       value: ethers.parseEther("0.05"),
+//     });
+
+//     expect(await contract.hasAccess(0, user.address)).to.equal(true);
+//   });
+
+//   it("User cannot access content without buying", async () => {
+//     await contract.createContent(
+//       ethers.parseEther("0.05"),
+//       "ipfs://secret"
+//     );
+
+//     await expect(
+//       contract.connect(user).getContentURI(0)
+//     ).to.be.revertedWith("Access denied");
+//   });
+
+//   it("Owner can withdraw ETH", async () => {
+//     await contract.createContent(
+//       ethers.parseEther("0.05"),
+//       "ipfs://content1"
+//     );
+
+//     await contract.connect(user).buyContent(0, {
+//       value: ethers.parseEther("0.05"),
+//     });
+
+//     await expect(() =>
+//       contract.withdraw()
+//     ).to.changeEtherBalance(owner, ethers.parseEther("0.05"));
+//   });
+// });

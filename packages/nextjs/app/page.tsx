@@ -1,79 +1,79 @@
 "use client";
 
-import Link from "next/link";
-import { Address } from "@scaffold-ui/components";
 import type { NextPage } from "next";
-import { hardhat } from "viem/chains";
 import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth";
+import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
+  const { address } = useAccount();
+
+  const { data: contentCount } = useScaffoldReadContract({
+    contractName: "YourContract",
+    functionName: "contentCount",
+  });
+
+  const { writeContractAsync } = useScaffoldWriteContract("YourContract");
+
+  const buyContent = async (id: number, price: bigint) => {
+    await writeContractAsync({
+      functionName: "buyContent",
+      args: [id],
+      value: price,
+    });
+  };
+
+  const renderContents = () => {
+    if (!contentCount) return null;
+
+    const items = [];
+    for (let i = 0; i < Number(contentCount); i++) {
+      items.push(<ContentItem key={i} contentId={i} onBuy={buyContent} />);
+    }
+    return items;
+  };
 
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address
-              address={connectedAddress}
-              chain={targetNetwork}
-              blockExplorerAddressLink={
-                targetNetwork.id === hardhat.id ? `/blockexplorer/address/${connectedAddress}` : undefined
-              }
-            />
-          </div>
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
-        </div>
+    <div className="flex flex-col items-center p-10 gap-6">
+      <h1 className="text-4xl font-bold">Digital Content Marketplace</h1>
 
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+      <p className="text-lg">Connected wallet: {address}</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{renderContents()}</div>
+    </div>
+  );
+};
+
+const ContentItem = ({ contentId, onBuy }: { contentId: number; onBuy: (id: number, price: bigint) => void }) => {
+  const { data: content } = useScaffoldReadContract({
+    contractName: "YourContract",
+    functionName: "contents",
+    args: [contentId],
+  });
+
+  const { data: hasAccess } = useScaffoldReadContract({
+    contractName: "YourContract",
+    functionName: "hasAccess",
+    args: [contentId],
+  });
+
+  if (!content || !content.exists) return null;
+
+  return (
+    <div className="border rounded-xl p-5 shadow">
+      <h2 className="text-xl font-semibold">Content #{contentId}</h2>
+      <p>Price: {Number(content.price) / 1e18} ETH</p>
+
+      {hasAccess ? (
+        <p className="text-green-600 mt-2">Purchased</p>
+      ) : (
+        <button
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+          onClick={() => onBuy(contentId, content.price)}
+        >
+          Buy
+        </button>
+      )}
+    </div>
   );
 };
 
