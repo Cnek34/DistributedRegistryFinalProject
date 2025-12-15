@@ -1,80 +1,93 @@
 "use client";
 
-import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useState } from "react";
+import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { parseEther } from "viem";
 
-const Home: NextPage = () => {
-  const { address } = useAccount();
+const SIMPLE_BET_ABI = [
+  {
+    "inputs": [
+      {"internalType": "string", "name": "_title", "type": "string"},
+      {"internalType": "bool", "name": "_isYes", "type": "bool"},
+      {"internalType": "uint256", "name": "_hours", "type": "uint256"}
+    ],
+    "name": "createBet",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getActiveBets",
+    "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
 
-  const { data: contentCount } = useScaffoldReadContract({
-    contractName: "YourContract",
-    functionName: "contentCount",
+const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+export default function Home() {
+  const { isConnected } = useAccount();
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("0.01");
+  
+  const { writeContract } = useWriteContract();
+  const { data: activeBets } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: SIMPLE_BET_ABI,
+    functionName: "getActiveBets",
   });
 
-  const { writeContractAsync } = useScaffoldWriteContract("YourContract");
-
-  const buyContent = async (id: number, price: bigint) => {
-    await writeContractAsync({
-      functionName: "buyContent",
-      args: [id],
-      value: price,
+  const handleCreate = async () => {
+    if (!title) return;
+    
+    await writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: SIMPLE_BET_ABI,
+      functionName: "createBet",
+      args: [title, true, 24n],
+      value: parseEther(amount),
     });
   };
 
-  const renderContents = () => {
-    if (!contentCount) return null;
-
-    const items = [];
-    for (let i = 0; i < Number(contentCount); i++) {
-      items.push(<ContentItem key={i} contentId={i} onBuy={buyContent} />);
-    }
-    return items;
-  };
-
   return (
-    <div className="flex flex-col items-center p-10 gap-6">
-      <h1 className="text-4xl font-bold">Digital Content Marketplace</h1>
-
-      <p className="text-lg">Connected wallet: {address}</p>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{renderContents()}</div>
-    </div>
-  );
-};
-
-const ContentItem = ({ contentId, onBuy }: { contentId: number; onBuy: (id: number, price: bigint) => void }) => {
-  const { data: content } = useScaffoldReadContract({
-    contractName: "YourContract",
-    functionName: "contents",
-    args: [contentId],
-  });
-
-  const { data: hasAccess } = useScaffoldReadContract({
-    contractName: "YourContract",
-    functionName: "hasAccess",
-    args: [contentId],
-  });
-
-  if (!content || !content.exists) return null;
-
-  return (
-    <div className="border rounded-xl p-5 shadow">
-      <h2 className="text-xl font-semibold">Content #{contentId}</h2>
-      <p>Price: {Number(content.price) / 1e18} ETH</p>
-
-      {hasAccess ? (
-        <p className="text-green-600 mt-2">Purchased</p>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-4">Пари</h1>
+      
+      {isConnected ? (
+        <>
+          <div className="mb-4">
+            <input
+              className="input input-bordered mr-2"
+              placeholder="Название пари"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <input
+              className="input input-bordered mr-2"
+              type="number"
+              step="0.001"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <button className="btn btn-primary" onClick={handleCreate}>
+              Создать
+            </button>
+          </div>
+          
+          <div>
+            <h2 className="text-xl font-bold mb-2">Активные пари: {activeBets?.length || 0}</h2>
+            {activeBets?.map((id: bigint) => (
+              <div key={id.toString()} className="border p-2 mb-2">
+                Пари #{id.toString()}
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
-        <button
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-          onClick={() => onBuy(contentId, content.price)}
-        >
-          Buy
-        </button>
+        <p>Подключите кошелек</p>
       )}
     </div>
   );
-};
-
-export default Home;
+}
