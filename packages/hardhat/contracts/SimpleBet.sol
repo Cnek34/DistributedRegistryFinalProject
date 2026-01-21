@@ -1,154 +1,124 @@
-//SPDX-License-Identifier: MIT
-pragma solidity >=0.8.0 <0.9.0;
-
-import "hardhat/console.sol";
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
 contract SimpleBet {
     struct Bet {
         uint256 id;
         string title;
         address creator;
-        uint256 amount;
-        bool isYes; // true = за, false = против
+        uint256 deadline;
         bool isSettled;
         bool outcome;
-        uint256 deadline;
+
+        uint256 totalYes;
+        uint256 totalNo;
+
+        address[] players;
         mapping(address => uint256) bets;
-        mapping(address => bool) side; // true = за, false = против
+        mapping(address => bool) side;
+        mapping(address => bool) claimed;
     }
-    
+
     uint256 public nextBetId;
-    mapping(uint256 => Bet) public bets;
-    
-    event BetCreated(uint256 indexed betId, address indexed creator, string title, uint256 amount, bool isYes);
+    mapping(uint256 => Bet) private bets;
+
+    event BetCreated(uint256 indexed betId, address indexed creator, string title, bool side);
     event BetPlaced(uint256 indexed betId, address indexed bettor, bool side, uint256 amount);
-    event BetSettled(uint256 indexed betId, bool outcome);
-    
-    function createBet(string memory _title, bool _isYes, uint256 _hours) external payable {
-        require(msg.value > 0, "Need ETH to create bet");
-        require(_hours >= 1 && _hours <= 24, "Duration 1-24 hours");
-        
-        uint256 betId = nextBetId;
-        Bet storage newBet = bets[betId];
-        
-        newBet.id = betId;
-        newBet.title = _title;
-        newBet.creator = msg.sender;
-        newBet.amount = msg.value;
-        newBet.isYes = _isYes;
-        newBet.deadline = block.timestamp + (_hours * 1 hours);
-        
-        // Создатель автоматически ставит на свою сторону
-        newBet.bets[msg.sender] = msg.value;
-        newBet.side[msg.sender] = _isYes;
-        
-        nextBetId++;
-        
-        emit BetCreated(betId, msg.sender, _title, msg.value, _isYes);
-    }
-    
-    function placeBet(uint256 betId, bool side) external payable {
-        Bet storage bet = bets[betId];
-        
-        require(msg.value > 0, "Need ETH to bet");
-        require(!bet.isSettled, "Bet already settled");
-        require(block.timestamp < bet.deadline, "Betting time over");
-        
-        bet.bets[msg.sender] += msg.value;
-        bet.side[msg.sender] = side;
-        
-        emit BetPlaced(betId, msg.sender, side, msg.value);
-    }
-    
-    function settleBet(uint256 betId, bool outcome) external {
-        Bet storage bet = bets[betId];
-        
-        require(msg.sender == bet.creator, "Only creator can settle");
-        require(!bet.isSettled, "Already settled");
-        require(block.timestamp >= bet.deadline, "Too early to settle");
-        
-        bet.isSettled = true;
-        bet.outcome = outcome;
-        
-        // Простой расчет выигрышей - все кто угадал делят пул поровну
-        uint256 totalWinningBets = 0;
-        uint256 totalPool = 0;
-        
-        // Считаем общий пул и количество выигрышных ставок
-        for (uint256 i = 0; i < nextBetId; i++) {
-            // В реальности нужно хранить участников, но для простоты оставим так
+
+    // ================= CREATE =================
+
+    function createBet(
+        string calldata _title,
+        bool _side,
+        uint256 _hours
+    ) external payable {
+        require(msg.value > 0, "ETH required");
+        require(_hours >= 1 && _hours <= 24, "1-24 hours");
+
+        Bet storage bet = bets[nextBetId];
+        bet.id = nextBetId;
+        bet.title = _title;
+        bet.creator = msg.sender;
+        bet.deadline = block.timestamp + _hours * 1 hours;
+
+        bet.players.push(msg.sender);
+        bet.bets[msg.sender] = msg.value;
+        bet.side[msg.sender] = _side;
+
+        if (_side) {
+            bet.totalYes += msg.value;
+        } else {
+            bet.totalNo += msg.value;
         }
-        
-        emit BetSettled(betId, outcome);
+
+        emit BetCreated(nextBetId, msg.sender, _title, _side);
+        nextBetId++;
     }
-    
-    function claimWinnings(uint256 betId) external {
+
+    // ================= BET =================
+
+    function placeBet(uint256 betId, bool _side) external payable {
         Bet storage bet = bets[betId];
-        
-        require(bet.isSettled, "Bet not settled yet");
-        require(bet.side[msg.sender] == bet.outcome, "You lost");
-        
-        uint256 userBet = bet.bets[msg.sender];
-        require(userBet > 0, "No bet found");
-        
-        // Для простоты возвращаем удвоенную ставку
-        uint256 winnings = userBet * 2;
-        
-        // Обнуляем ставку перед отправкой
-        bet.bets[msg.sender] = 0;
-        
-        (bool success, ) = payable(msg.sender).call{value: winnings}("");
-        require(success, "Transfer failed");
+
+        require(msg.value > 0, "ETH required");
+        require(block.timestamp < bet.deadline, "Bet closed");
+        require(!bet.isSettled, "Already settled");
+        require(bet.bets[msg.sender] == 0, "Already bet");
+
+        bet.players.push(msg.sender);
+        bet.bets[msg.sender] = msg.value;
+        bet.side[msg.sender] = _side;
+
+        if (_side) {
+            bet.totalYes += msg.value;
+        } else {
+            bet.totalNo += msg.value;
+        }
+
+        emit BetPlaced(betId, msg.sender, _side, msg.value);
     }
-    
-    function getBetInfo(uint256 betId) external view returns (
-        string memory title,
-        address creator,
-        uint256 amount,
-        bool isYes,
-        bool isSettled,
-        bool outcome,
-        uint256 deadline,
-        uint256 yourBet,
-        bool yourSide
-    ) {
-        Bet storage bet = bets[betId];
-        
-        return (
-            bet.title,
-            bet.creator,
-            bet.amount,
-            bet.isYes,
-            bet.isSettled,
-            bet.outcome,
-            bet.deadline,
-            bet.bets[msg.sender],
-            bet.side[msg.sender]
-        );
-    }
-    
+
+    // ================= VIEW =================
+
     function getActiveBets() external view returns (uint256[] memory) {
-        uint256 count = 0;
-        
-        // Считаем активные пари
+        uint256 count;
         for (uint256 i = 0; i < nextBetId; i++) {
             if (!bets[i].isSettled && block.timestamp < bets[i].deadline) {
                 count++;
             }
         }
-        
-        uint256[] memory activeBets = new uint256[](count);
-        uint256 index = 0;
-        
+
+        uint256[] memory ids = new uint256[](count);
+        uint256 index;
+
         for (uint256 i = 0; i < nextBetId; i++) {
             if (!bets[i].isSettled && block.timestamp < bets[i].deadline) {
-                activeBets[index] = i;
-                index++;
+                ids[index++] = i;
             }
         }
-        
-        return activeBets;
+
+        return ids;
     }
-    
+
+    /// 🔹 ДАННЫЕ ПАРИ ДЛЯ ФРОНТЕНДА
+    function getBetPreview(uint256 betId)
+        external
+        view
+        returns (
+            string memory title,
+            address creator,
+            uint256 creatorBet,
+            bool creatorSide
+        )
+    {
+        Bet storage bet = bets[betId];
+        return (
+            bet.title,
+            bet.creator,
+            bet.bets[bet.creator],
+            bet.side[bet.creator]
+        );
+    }
+
     receive() external payable {}
 }
